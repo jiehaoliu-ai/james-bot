@@ -15,7 +15,9 @@ from message_handler import handle_message
 from callback_handler import handle_callback
 from command_handler import (
     start_command, digest_command, todos_command,
-    expenses_command, thoughts_command, help_command
+    expenses_command, monthly_command, ytd_command,
+    personal_command, palfinger_command,
+    thoughts_command, help_command
 )
 from digest_service import send_morning_digest, send_evening_digest
 
@@ -31,26 +33,23 @@ async def post_init(app: Application):
     scheduler.add_job(
         send_morning_digest,
         CronTrigger(hour=8, minute=0, timezone=pytz.timezone(TIMEZONE)),
-        args=[app.bot],
-        id='morning_digest'
+        args=[app.bot], id='morning_digest'
     )
     scheduler.add_job(
         send_evening_digest,
         CronTrigger(hour=22, minute=0, timezone=pytz.timezone(TIMEZONE)),
-        args=[app.bot],
-        id='evening_digest'
+        args=[app.bot], id='evening_digest'
     )
     scheduler.start()
     logger.info("Scheduler started — 8am and 10pm SGT digests active")
 
 
 async def error_handler(update, context):
-    error = context.error
-    if isinstance(error, Conflict):
-        logger.warning("Conflict error — another instance running, waiting 15s...")
+    if isinstance(context.error, Conflict):
+        logger.warning("Conflict — another instance running, waiting 15s...")
         await asyncio.sleep(15)
     else:
-        logger.error(f"Update {update} caused error: {error}")
+        logger.error(f"Error: {context.error}")
 
 
 def main():
@@ -65,6 +64,10 @@ def main():
     app.add_handler(CommandHandler("digest", digest_command))
     app.add_handler(CommandHandler("todos", todos_command))
     app.add_handler(CommandHandler("expenses", expenses_command))
+    app.add_handler(CommandHandler("monthly", monthly_command))
+    app.add_handler(CommandHandler("ytd", ytd_command))
+    app.add_handler(CommandHandler("personal", personal_command))
+    app.add_handler(CommandHandler("palfinger", palfinger_command))
     app.add_handler(CommandHandler("thoughts", thoughts_command))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
