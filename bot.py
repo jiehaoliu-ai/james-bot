@@ -1,5 +1,7 @@
 import logging
+import asyncio
 from telegram import Update
+from telegram.error import Conflict
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
     CallbackQueryHandler, filters
@@ -26,23 +28,29 @@ logger = logging.getLogger(__name__)
 
 async def post_init(app: Application):
     scheduler = AsyncIOScheduler(timezone=pytz.timezone(TIMEZONE))
-
     scheduler.add_job(
         send_morning_digest,
         CronTrigger(hour=8, minute=0, timezone=pytz.timezone(TIMEZONE)),
         args=[app.bot],
         id='morning_digest'
     )
-
     scheduler.add_job(
         send_evening_digest,
         CronTrigger(hour=22, minute=0, timezone=pytz.timezone(TIMEZONE)),
         args=[app.bot],
         id='evening_digest'
     )
-
     scheduler.start()
     logger.info("Scheduler started — 8am and 10pm SGT digests active")
+
+
+async def error_handler(update, context):
+    error = context.error
+    if isinstance(error, Conflict):
+        logger.warning("Conflict error — another instance running, waiting 15s...")
+        await asyncio.sleep(15)
+    else:
+        logger.error(f"Update {update} caused error: {error}")
 
 
 def main():
@@ -59,12 +67,12 @@ def main():
     app.add_handler(CommandHandler("expenses", expenses_command))
     app.add_handler(CommandHandler("thoughts", thoughts_command))
     app.add_handler(CommandHandler("help", help_command))
-
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_error_handler(error_handler)
 
     logger.info("James Bot starting...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == '__main__':
