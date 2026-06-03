@@ -11,7 +11,7 @@ SGT = pytz.timezone(TIMEZONE)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ALLOWED_USER_ID:
+    if str(update.effective_user.id) != str(ALLOWED_USER_ID):
         return
     await update.message.reply_text(
         "👋 *James Bot is live.*\n\n"
@@ -34,7 +34,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ALLOWED_USER_ID:
+    if str(update.effective_user.id) != str(ALLOWED_USER_ID):
         return
     hour = datetime.now(SGT).hour
     digest = format_morning_digest() if hour < 14 else format_evening_digest()
@@ -42,7 +42,7 @@ async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def todos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ALLOWED_USER_ID:
+    if str(update.effective_user.id) != str(ALLOWED_USER_ID):
         return
     todos = get_open_todos()
     if todos['total'] == 0:
@@ -64,7 +64,7 @@ async def todos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def expenses_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ALLOWED_USER_ID:
+    if str(update.effective_user.id) != str(ALLOWED_USER_ID):
         return
     today = get_expenses_today()
     mtd = get_expenses_mtd()
@@ -82,7 +82,7 @@ async def expenses_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def thoughts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ALLOWED_USER_ID:
+    if str(update.effective_user.id) != str(ALLOWED_USER_ID):
         return
     args = context.args
     if not args:

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -12,17 +13,21 @@ from sheets_service import (
 )
 from digest_service import format_morning_digest, format_evening_digest
 
+logger = logging.getLogger(__name__)
 SGT = pytz.timezone(TIMEZONE)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    logger.info(f"MSG RECEIVED — user_id={user_id}, allowed={ALLOWED_USER_ID}, match={str(user_id)==str(ALLOWED_USER_ID)}")
 
-    if user_id != ALLOWED_USER_ID:
+    if str(user_id) != str(ALLOWED_USER_ID):
+        logger.warning(f"UNAUTHORIZED: {user_id}")
         await update.message.reply_text("Unauthorized.")
         return
 
     text = update.message.text.strip()
+    logger.info(f"Processing: {text}")
     now_sgt = datetime.now(SGT).isoformat()
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -32,7 +37,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = parsed.get("data", {})
     display = parsed.get("display", "")
 
-    # ─── WRITE INTENTS — confirm before saving ───────────────
+    logger.info(f"Intent: {intent}")
+
     if intent in ["EXPENSE", "TODO", "THOUGHT", "REMINDER"]:
         context.user_data["pending"] = {
             "intent": intent,
@@ -40,19 +46,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "display": display,
             "original_text": text
         }
-
         keyboard = [[
             InlineKeyboardButton("✅ Confirm", callback_data="confirm"),
             InlineKeyboardButton("✏️ Edit", callback_data="edit"),
             InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
         ]]
-
         await update.message.reply_text(
             f"Got this — confirm?\n\n{display}",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    # ─── COMPLETE TODO ───────────────────────────────────────
     elif intent == "COMPLETE_TODO":
         search_term = data.get("search_term", "")
         result = complete_todo(search_term)
@@ -64,7 +67,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Couldn't find a matching open todo.")
 
-    # ─── EXPENSE QUERY ───────────────────────────────────────
     elif intent == "QUERY_EXPENSE":
         expenses = get_expenses_mtd()
         today = get_expenses_today()
@@ -80,7 +82,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await update.message.reply_text(msg, parse_mode='Markdown')
 
-    # ─── TODO QUERY ──────────────────────────────────────────
     elif intent == "QUERY_TODOS":
         todos = get_open_todos()
         if todos['total'] == 0:
@@ -102,7 +103,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg += f"  {icon} {t.get('title')}{due}\n"
         await update.message.reply_text(msg, parse_mode='Markdown')
 
-    # ─── THOUGHTS QUERY ──────────────────────────────────────
     elif intent == "QUERY_THOUGHTS":
         query = data.get("search_term", text)
         results = search_thoughts(query)
@@ -118,13 +118,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += "\n"
         await update.message.reply_text(msg, parse_mode='Markdown')
 
-    # ─── DIGEST ──────────────────────────────────────────────
     elif intent == "DIGEST":
         hour = datetime.now(SGT).hour
         digest = format_morning_digest() if hour < 14 else format_evening_digest()
         await update.message.reply_text(digest, parse_mode='Markdown')
 
-    # ─── REFLECTION ──────────────────────────────────────────
     elif intent == "REFLECTION":
         from sheets_service import add_reflection
         hour = datetime.now(SGT).hour
@@ -132,7 +130,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_reflection(r_type, data.get("content", text))
         await update.message.reply_text("📝 Reflection logged. ✓")
 
-    # ─── UNKNOWN ─────────────────────────────────────────────
     else:
         await update.message.reply_text(
             "Not sure what to do with that. Try:\n\n"
