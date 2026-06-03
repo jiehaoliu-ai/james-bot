@@ -28,4 +28,4 @@ SHEET_REFLECTIONS = "Reflections"
 SHEET_REMINDERS = "Reminders"
 
 # Claude model
-CLAUDE_MODEL = "claude-sonnet-4-20250514"
+CLAUDE_MODEL = "claude-sonnet-4-5"
