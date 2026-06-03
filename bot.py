@@ -1,5 +1,4 @@
 import logging
-import asyncio
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -25,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-async def setup_scheduler(app: Application):
+async def post_init(app: Application):
     scheduler = AsyncIOScheduler(timezone=pytz.timezone(TIMEZONE))
 
     scheduler.add_job(
@@ -47,7 +46,12 @@ async def setup_scheduler(app: Application):
 
 
 def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = (
+        Application.builder()
+        .token(TELEGRAM_TOKEN)
+        .post_init(post_init)
+        .build()
+    )
 
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("digest", digest_command))
@@ -58,8 +62,6 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CallbackQueryHandler(handle_callback))
-
-    app.post_init = setup_scheduler
 
     logger.info("James Bot starting...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
