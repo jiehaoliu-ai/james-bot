@@ -1,91 +1,100 @@
 import json
+import logging
 import anthropic
 from settings import ANTHROPIC_API_KEY, CLAUDE_MODEL
 
+logger = logging.getLogger(__name__)
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
-SYSTEM_PROMPT = """You are an intelligent personal assistant bot for James, operating via Telegram.
-James is based in Singapore. He tracks things across two categories: Personal and Palfinger (his work).
-Under Personal > Kids, he has two children: Ryan and Ethan.
+SYSTEM_PROMPT = """You are a parser for James's personal assistant bot. Parse messages into JSON.
 
-Parse James's natural language messages and return structured JSON only — no other text.
+RULES:
+- Return ONLY valid JSON, nothing else
+- No markdown, no code fences, no explanation
+- Always include intent, data, display fields
 
-INTENT TYPES:
-- EXPENSE: spending, paying, buying, cost
-- TODO: tasks, need to, must, should, to do
-- THOUGHT: ideas, observations, quotes, insights, interesting things
-- REMINDER: remind me, don't forget, alert, schedule
-- COMPLETE_TODO: done, finished, completed, crossed off
+INTENTS:
+- EXPENSE: spending money (spent, paid, bought, cost, sgd, dollar, $)
+- TODO: tasks (need to, must, should, todo, palfinger -, personal -)
+- THOUGHT: ideas, insights, interesting things
+- REMINDER: remind me, alert, don't forget
+- COMPLETE_TODO: done, finished, completed
 - QUERY_EXPENSE: how much spent, expense summary
-- QUERY_TODOS: show todos, what's pending, open tasks
-- QUERY_THOUGHTS: search thoughts, find thought
-- DIGEST: daily summary, digest, update
-- REFLECTION: evening reflection, how today went
-- UNKNOWN: cannot determine
+- QUERY_TODOS: show todos, pending tasks
+- QUERY_THOUGHTS: search thoughts
+- DIGEST: digest, summary, overview
+- REFLECTION: reflection, how today went
 
-CATEGORIES: Personal, Palfinger
+CATEGORIES: Personal or Palfinger
 PERSONAL subcategories: Kids > Ryan, Kids > Ethan, Food & Dining, Transport, Health, Entertainment, Shopping, Home, Other
 PALFINGER subcategories: Meals & Entertainment, Travel, Supplies, Client, Other
 
-CURRENCY: Default SGD. If another currency mentioned, convert to SGD using realistic rates. Always include both.
+CURRENCY: Default SGD. Convert foreign currency to SGD if mentioned.
 
-Return valid JSON only. Examples:
+EXAMPLES:
 
-EXPENSE:
-{"intent":"EXPENSE","data":{"amount_original":45.00,"currency_original":"SGD","amount_sgd":45.00,"category":"Personal","subcategory":"Food & Dining","description":"lunch","confidence":0.95},"display":"💸 Expense\n  Amount: SGD 45.00\n  Category: Personal > Food & Dining\n  Note: Lunch"}
+Input: "spent SGD 100 on NBA tickets"
+Output: {"intent":"EXPENSE","data":{"amount_original":100,"currency_original":"SGD","amount_sgd":100,"category":"Personal","subcategory":"Entertainment","description":"NBA tickets","confidence":0.95},"display":"💸 Expense\n  Amount: SGD 100.00\n  Category: Personal > Entertainment\n  Note: NBA tickets"}
 
-TODO:
-{"intent":"TODO","data":{"title":"Finish Palfinger proposal","category":"Palfinger","priority":"high","due_date":null},"display":"📋 To-Do\n  Task: Finish Palfinger proposal\n  Category: Palfinger\n  Priority: High"}
+Input: "paid 50 usd for dinner"
+Output: {"intent":"EXPENSE","data":{"amount_original":50,"currency_original":"USD","amount_sgd":67.5,"category":"Personal","subcategory":"Food & Dining","description":"dinner","confidence":0.9},"display":"💸 Expense\n  Amount: SGD 67.50 (USD 50)\n  Category: Personal > Food & Dining\n  Note: Dinner"}
 
-THOUGHT:
-{"intent":"THOUGHT","data":{"content":"People overestimate tools and underestimate systems","tags":["productivity","systems","mindset"],"category":"Personal"},"display":"💭 Thought\n  Content: People overestimate tools and underestimate systems\n  Tags: #productivity #systems #mindset"}
+Input: "need to finish the palfinger proposal"
+Output: {"intent":"TODO","data":{"title":"Finish Palfinger proposal","category":"Palfinger","priority":"medium","due_date":null},"display":"📋 To-Do\n  Task: Finish Palfinger proposal\n  Category: Palfinger\n  Priority: Medium"}
 
-REMINDER:
-{"intent":"REMINDER","data":{"title":"Call John","due_datetime":"2024-01-15T15:00:00+08:00","category":"Palfinger","description":"Follow up on contract"},"display":"⏰ Reminder\n  Title: Call John\n  When: Monday 3:00 PM\n  Category: Palfinger"}
+Input: "interesting idea: systems beat tools"
+Output: {"intent":"THOUGHT","data":{"content":"Systems beat tools","tags":["productivity","systems"],"category":"Personal"},"display":"💭 Thought\n  Content: Systems beat tools\n  Tags: #productivity #systems"}
 
-COMPLETE_TODO:
-{"intent":"COMPLETE_TODO","data":{"search_term":"Palfinger proposal"},"display":"✅ Marking complete: Palfinger proposal"}
+Input: "remind me to call John tomorrow 3pm"
+Output: {"intent":"REMINDER","data":{"title":"Call John","due_datetime":"2024-01-16T15:00:00+08:00","category":"Personal","description":""},"display":"⏰ Reminder\n  Title: Call John\n  When: Tomorrow 3:00 PM"}
 
-For QUERY types, DIGEST, REFLECTION, UNKNOWN:
-{"intent":"QUERY_EXPENSE","data":{},"display":""}"""
+Input: "done with the proposal"
+Output: {"intent":"COMPLETE_TODO","data":{"search_term":"proposal"},"display":"✅ Marking complete: proposal"}
+
+Input: "how much have I spent"
+Output: {"intent":"QUERY_EXPENSE","data":{},"display":""}
+
+Input: "show my todos"
+Output: {"intent":"QUERY_TODOS","data":{},"display":""}
+
+Input: "digest"
+Output: {"intent":"DIGEST","data":{},"display":""}"""
 
 
 async def parse_message(message: str, current_datetime: str) -> dict:
     try:
+        logger.info(f"NLP parsing: {message}")
+        
         response = client.messages.create(
             model=CLAUDE_MODEL,
-            max_tokens=1000,
+            max_tokens=500,
             system=SYSTEM_PROMPT,
             messages=[{
                 "role": "user",
-                "content": f"Current datetime (SGT): {current_datetime}\n\nMessage: {message}"
+                "content": f"Current datetime (SGT): {current_datetime}\n\nParse this message: {message}"
             }]
         )
 
         raw = response.content[0].text.strip()
-        if raw.startswith("```"):
+        logger.info(f"NLP raw response: {raw}")
+
+        # Strip any accidental markdown
+        if "```" in raw:
             raw = raw.split("```")[1]
             if raw.startswith("json"):
                 raw = raw[4:]
         raw = raw.strip()
 
-        return json.loads(raw)
+        result = json.loads(raw)
+        logger.info(f"NLP parsed intent: {result.get('intent')}")
+        return result
 
-    except json.JSONDecodeError:
-        return {"intent": "UNKNOWN", "data": {}, "display": "I couldn't understand that. Try rephrasing?"}
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error: {e}, raw: {raw if 'raw' in locals() else 'no response'}")
+        return {"intent": "UNKNOWN", "data": {}, "display": ""}
+    except anthropic.APIError as e:
+        logger.error(f"Anthropic API error: {e}")
+        return {"intent": "ERROR", "data": {}, "display": f"API error: {str(e)}"}
     except Exception as e:
-        return {"intent": "ERROR", "data": {}, "display": f"Error: {str(e)}"}
-
-
-async def generate_query_response(query_type: str, data: dict, user_query: str) -> str:
-    prompt = f"""James asked: "{user_query}"
-Query type: {query_type}
-Data: {json.dumps(data, indent=2)}
-Respond directly and concisely. Show data clearly. Use SGD for all amounts. No preamble."""
-
-    response = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.content[0].text.strip()
+        logger.error(f"NLP error: {e}")
+        return {"intent": "UNKNOWN", "data": {}, "display": ""}
