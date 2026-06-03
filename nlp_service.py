@@ -26,7 +26,7 @@ INTENTS:
 - REFLECTION: reflection, how today went
 
 CATEGORIES: Personal or Palfinger
-PERSONAL subcategories: Kids > Ryan, Kids > Ethan, Food & Dining, Transport, Health, Entertainment, Shopping, Home, Other
+PERSONAL subcategories: Entertainment, Kids > Ryan, Kids > Ethan, Food & Dining, Car, Family, Health, Shopping, Home, Other
 PALFINGER subcategories: Meals & Entertainment, Travel, Supplies, Client, Other
 
 CURRENCY: Default SGD. Convert foreign currency to SGD if mentioned.
