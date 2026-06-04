@@ -1,6 +1,7 @@
 from datetime import datetime
+from collections import defaultdict
 import pytz
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ContextTypes
 
 from settings import ALLOWED_USER_ID, TIMEZONE
@@ -29,11 +30,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "*Commands:*\n"
         "/digest — current summary\n"
         "/todos — open todos\n"
-        "/expenses — today + MTD\n"
-        "/monthly — this month by category\n"
+        "/expenses — today + MTD by category\n"
+        "/monthly — full monthly report\n"
         "/ytd — year to date report\n"
-        "/personal — Personal category detail\n"
-        "/palfinger — Palfinger category detail\n"
+        "/personal — Personal detail\n"
+        "/palfinger — Palfinger detail\n"
         "/thoughts <keyword> — search thoughts\n"
         "/help — this message\n\n"
         "Auto-digests at *8:00 AM* and *10:00 PM* SGT.",
@@ -59,30 +60,54 @@ async def todos_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"*Personal ({len(todos['personal'])})*\n"
         for t in todos['personal']:
             icon = "🔴" if t.get('priority') == 'high' else "🟡"
-            msg += f"  {icon} {t.get('title')}\n"
+            due = f" _(due {t.get('due_date')})_" if t.get('due_date') else ""
+            msg += f"  {icon} {t.get('title')}{due}\n"
         msg += "\n"
     if todos['palfinger']:
         msg += f"*Palfinger ({len(todos['palfinger'])})*\n"
         for t in todos['palfinger']:
             icon = "🔴" if t.get('priority') == 'high' else "🟡"
-            msg += f"  {icon} {t.get('title')}\n"
+            due = f" _(due {t.get('due_date')})_" if t.get('due_date') else ""
+            msg += f"  {icon} {t.get('title')}{due}\n"
     await update.message.reply_text(msg, parse_mode='Markdown')
 
 
 async def expenses_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
     today = get_expenses_today()
-    mtd = get_expenses_mtd()
-    msg = (
-        f"💸 *Expenses*\n\n"
-        f"*Today*\n"
-        f"  Personal: SGD {today['personal']:,.2f}\n"
-        f"  Palfinger: SGD {today['palfinger']:,.2f}\n\n"
-        f"*Month to Date*\n"
-        f"  Personal: SGD {mtd['personal']:,.2f}\n"
-        f"  Palfinger: SGD {mtd['palfinger']:,.2f}\n"
-        f"  *Total: SGD {mtd['total']:,.2f}*"
-    )
+    records = get_all_expenses()
+    month = current_month()
+    month_entries = [r for r in records if str(r.get("month", "")) == month]
+    now = datetime.now(SGT)
+
+    msg = f"💸 *Expenses — {now.strftime('%B %Y')}*\n\n"
+
+    # Today
+    msg += f"*Today*\n"
+    msg += f"  Personal: SGD {today['personal']:,.2f}\n"
+    msg += f"  Palfinger: SGD {today['palfinger']:,.2f}\n"
+    msg += f"  Total: SGD {today['total']:,.2f}\n\n"
+
+    # MTD by category breakdown
+    msg += f"*Month to Date*\n"
+    for cat in ["Personal", "Palfinger"]:
+        cat_entries = [e for e in month_entries if e.get("category") == cat]
+        if not cat_entries:
+            continue
+        cat_total = sum(float(e.get("amount_sgd", 0) or 0) for e in cat_entries)
+        msg += f"\n_{cat}_ — SGD {cat_total:,.2f}\n"
+
+        by_sub = defaultdict(float)
+        for e in cat_entries:
+            sub = e.get("subcategory", "Other") or "Other"
+            by_sub[sub] += float(e.get("amount_sgd", 0) or 0)
+
+        for sub, amt in sorted(by_sub.items(), key=lambda x: -x[1]):
+            msg += f"  • {sub}: SGD {amt:,.2f}\n"
+
+    grand = sum(float(e.get("amount_sgd", 0) or 0) for e in month_entries)
+    msg += f"\n*TOTAL: SGD {grand:,.2f}*"
+
     await update.message.reply_text(msg, parse_mode='Markdown')
 
 
@@ -90,16 +115,11 @@ async def monthly_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not auth(update): return
     await update.message.reply_text("_Pulling monthly report..._", parse_mode='Markdown')
     records = get_all_expenses()
-
-    # Allow /monthly 2026-05 for a specific month
     args = context.args
     month = args[0] if args else current_month()
-
     report = format_monthly_report(records, month)
-    # Split if too long for Telegram (4096 char limit)
     if len(report) > 4000:
-        chunks = [report[i:i+4000] for i in range(0, len(report), 4000)]
-        for chunk in chunks:
+        for chunk in [report[i:i+4000] for i in range(0, len(report), 4000)]:
             await update.message.reply_text(chunk, parse_mode='Markdown')
     else:
         await update.message.reply_text(report, parse_mode='Markdown')
@@ -111,8 +131,7 @@ async def ytd_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     records = get_all_expenses()
     report = format_ytd_report(records)
     if len(report) > 4000:
-        chunks = [report[i:i+4000] for i in range(0, len(report), 4000)]
-        for chunk in chunks:
+        for chunk in [report[i:i+4000] for i in range(0, len(report), 4000)]:
             await update.message.reply_text(chunk, parse_mode='Markdown')
     else:
         await update.message.reply_text(report, parse_mode='Markdown')
@@ -124,8 +143,7 @@ async def personal_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     records = get_all_expenses()
     report = format_category_report(records, "Personal")
     if len(report) > 4000:
-        chunks = [report[i:i+4000] for i in range(0, len(report), 4000)]
-        for chunk in chunks:
+        for chunk in [report[i:i+4000] for i in range(0, len(report), 4000)]:
             await update.message.reply_text(chunk, parse_mode='Markdown')
     else:
         await update.message.reply_text(report, parse_mode='Markdown')
@@ -137,8 +155,7 @@ async def palfinger_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     records = get_all_expenses()
     report = format_category_report(records, "Palfinger")
     if len(report) > 4000:
-        chunks = [report[i:i+4000] for i in range(0, len(report), 4000)]
-        for chunk in chunks:
+        for chunk in [report[i:i+4000] for i in range(0, len(report), 4000)]:
             await update.message.reply_text(chunk, parse_mode='Markdown')
     else:
         await update.message.reply_text(report, parse_mode='Markdown')
