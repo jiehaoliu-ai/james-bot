@@ -19,15 +19,21 @@ INTENTS:
 - THOUGHT: ideas, insights, interesting things
 - REMINDER: remind me, alert, don't forget
 - COMPLETE_TODO: done, finished, completed
+- FITNESS: exercise logs (ran, jogged, treadmill, dumbbells, workout, gym, walked, cycled, swam, lifted, trained, exercise, mins on, km on)
 - QUERY_EXPENSE: how much spent, expense summary
 - QUERY_TODOS: show todos, pending tasks
 - QUERY_THOUGHTS: search thoughts
+- QUERY_FITNESS: fitness summary, workout stats, how many sessions
 - DIGEST: digest, summary, overview
 - REFLECTION: reflection, how today went
 
 CATEGORIES: Personal or Palfinger
 PERSONAL subcategories: Entertainment, Kids > Ryan, Kids > Ethan, Food & Dining, Car, Family, Health, Shopping, Home, Other
 PALFINGER subcategories: Meals & Entertainment, Travel, Supplies, Client, Other
+
+FITNESS types: cardio, strength, flexibility, sports
+FITNESS activities: treadmill, dumbbells, cycling, swimming, walking, running, yoga, stretching, core, HIIT
+FITNESS intensity: light, moderate, hard (infer from context if not stated)
 
 CURRENCY: Default SGD. Convert foreign currency to SGD if mentioned.
 
@@ -36,8 +42,17 @@ EXAMPLES:
 Input: "spent SGD 100 on NBA tickets"
 Output: {"intent":"EXPENSE","data":{"amount_original":100,"currency_original":"SGD","amount_sgd":100,"category":"Personal","subcategory":"Entertainment","description":"NBA tickets","confidence":0.95},"display":"💸 Expense\n  Amount: SGD 100.00\n  Category: Personal > Entertainment\n  Note: NBA tickets"}
 
-Input: "paid 50 usd for dinner"
-Output: {"intent":"EXPENSE","data":{"amount_original":50,"currency_original":"USD","amount_sgd":67.5,"category":"Personal","subcategory":"Food & Dining","description":"dinner","confidence":0.9},"display":"💸 Expense\n  Amount: SGD 67.50 (USD 50)\n  Category: Personal > Food & Dining\n  Note: Dinner"}
+Input: "ran 35 mins 4.5km on treadmill"
+Output: {"intent":"FITNESS","data":{"type":"cardio","activity":"treadmill","duration_mins":35,"distance_km":4.5,"muscle_group":"","intensity":"moderate","notes":""},"display":"💪 Workout\n  Treadmill — 35 min / 4.5 km\n  Intensity: Moderate"}
+
+Input: "30 mins dumbbells chest and triceps"
+Output: {"intent":"FITNESS","data":{"type":"strength","activity":"dumbbells","duration_mins":30,"distance_km":0,"muscle_group":"chest, triceps","intensity":"moderate","notes":""},"display":"💪 Workout\n  Dumbbells — 30 min\n  Muscle group: Chest, Triceps"}
+
+Input: "20 mins treadmill easy walk"
+Output: {"intent":"FITNESS","data":{"type":"cardio","activity":"treadmill","duration_mins":20,"distance_km":0,"muscle_group":"","intensity":"light","notes":"easy walk"},"display":"💪 Workout\n  Treadmill — 20 min\n  Intensity: Light"}
+
+Input: "45 mins gym — chest, shoulders, triceps, hard session"
+Output: {"intent":"FITNESS","data":{"type":"strength","activity":"dumbbells","duration_mins":45,"distance_km":0,"muscle_group":"chest, shoulders, triceps","intensity":"hard","notes":""},"display":"💪 Workout\n  Strength — 45 min\n  Muscle group: Chest, Shoulders, Triceps\n  Intensity: Hard"}
 
 Input: "need to finish the palfinger proposal"
 Output: {"intent":"TODO","data":{"title":"Finish Palfinger proposal","category":"Palfinger","priority":"medium","due_date":null},"display":"📋 To-Do\n  Task: Finish Palfinger proposal\n  Category: Palfinger\n  Priority: Medium"}
@@ -57,6 +72,9 @@ Output: {"intent":"QUERY_EXPENSE","data":{},"display":""}
 Input: "show my todos"
 Output: {"intent":"QUERY_TODOS","data":{},"display":""}
 
+Input: "how are my workouts this week"
+Output: {"intent":"QUERY_FITNESS","data":{},"display":""}
+
 Input: "digest"
 Output: {"intent":"DIGEST","data":{},"display":""}"""
 
@@ -64,7 +82,7 @@ Output: {"intent":"DIGEST","data":{},"display":""}"""
 async def parse_message(message: str, current_datetime: str) -> dict:
     try:
         logger.info(f"NLP parsing: {message}")
-        
+
         response = client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=500,
@@ -78,7 +96,6 @@ async def parse_message(message: str, current_datetime: str) -> dict:
         raw = response.content[0].text.strip()
         logger.info(f"NLP raw response: {raw}")
 
-        # Strip any accidental markdown
         if "```" in raw:
             raw = raw.split("```")[1]
             if raw.startswith("json"):

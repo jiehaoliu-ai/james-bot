@@ -3,6 +3,7 @@ import pytz
 from telegram import Bot
 
 from settings import ALLOWED_USER_ID, TIMEZONE
+from fitness_service import format_fitness_digest_line
 from sheets_service import (
     get_open_todos, get_expenses_mtd, get_expenses_today,
     get_reminders_today, get_completed_today
@@ -95,6 +96,12 @@ def format_morning_digest() -> str:
     # Reflection prompt
     lines.append(f"💭 *MORNING THOUGHT*")
     lines.append(f"  _{get_morning_prompt()}_")
+    lines.append("")
+    try:
+        fitness_line = format_fitness_digest_line()
+        lines.append(fitness_line)
+    except:
+        pass
     lines.append("")
     lines.append("_Reply naturally to log expenses, todos, thoughts, or reminders._")
 

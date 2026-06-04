@@ -11,6 +11,7 @@ from sheets_service import (
     get_open_todos, get_expenses_mtd, get_expenses_today,
     search_thoughts, complete_todo
 )
+from fitness_service import add_workout, format_fitness_report
 from digest_service import format_morning_digest, format_evening_digest
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"MSG RECEIVED — user_id={user_id}, allowed={ALLOWED_USER_ID}, match={str(user_id)==str(ALLOWED_USER_ID)}")
 
     if str(user_id) != str(ALLOWED_USER_ID):
-        logger.warning(f"UNAUTHORIZED: {user_id}")
         await update.message.reply_text("Unauthorized.")
         return
 
@@ -39,7 +39,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     logger.info(f"Intent: {intent}")
 
-    if intent in ["EXPENSE", "TODO", "THOUGHT", "REMINDER"]:
+    # ─── WRITE INTENTS — confirm before saving ───────────────
+    if intent in ["EXPENSE", "TODO", "THOUGHT", "REMINDER", "FITNESS"]:
         context.user_data["pending"] = {
             "intent": intent,
             "data": data,
@@ -107,7 +108,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = data.get("search_term", text)
         results = search_thoughts(query)
         if not results:
-            await update.message.reply_text(f"No thoughts found matching that.")
+            await update.message.reply_text("No thoughts found matching that.")
             return
         msg = f"💭 *Thoughts* ({len(results)})\n\n"
         for t in results[:5]:
@@ -117,6 +118,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 msg += f"  _{tags}_\n"
             msg += "\n"
         await update.message.reply_text(msg, parse_mode='Markdown')
+
+    elif intent == "QUERY_FITNESS":
+        report = format_fitness_report()
+        await update.message.reply_text(report, parse_mode='Markdown')
 
     elif intent == "DIGEST":
         hour = datetime.now(SGT).hour
@@ -134,6 +139,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Not sure what to do with that. Try:\n\n"
             "• _spent 45 on lunch_ → expense\n"
+            "• _ran 30 mins 4km treadmill_ → workout\n"
+            "• _30 mins dumbbells chest_ → workout\n"
             "• _need to finish the proposal_ → todo\n"
             "• _remind me to call John tomorrow 3pm_ → reminder\n"
             "• _interesting: systems beat tools_ → thought\n"

@@ -2,6 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from sheets_service import add_expense, add_todo, add_thought, add_reminder
+from fitness_service import add_workout
 from calendar_service import create_calendar_event
 
 
@@ -49,6 +50,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             success = add_thought(data)
             tags = " ".join([f"#{t}" for t in data.get("tags", [])])
             response_msg = f"✅ Thought archived\n  {tags}"
+
+        elif intent == "FITNESS":
+            success = add_workout(data)
+            dur = data.get("duration_mins", "")
+            km = data.get("distance_km", "")
+            detail = f"{data.get('activity', 'workout')}"
+            if dur: detail += f" / {dur} min"
+            if km and float(km or 0) > 0: detail += f" / {km} km"
+            response_msg = f"✅ Workout logged\n  {detail}"
 
         elif intent == "REMINDER":
             calendar_id = create_calendar_event(data)
